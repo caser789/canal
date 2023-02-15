@@ -17,7 +17,7 @@ type MySQLError struct {
 	State   string
 }
 
-func (e *MySQLError) String() string {
+func (e *MySQLError) Error() string {
 	return fmt.Sprintf("ERROR %d (%s): %s", e.Code, e.State, e.Message)
 }
 
