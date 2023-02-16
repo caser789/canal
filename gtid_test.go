@@ -103,3 +103,129 @@ func Test_IntervalSlice(t *testing.T) {
 		})
 	}
 }
+
+func Test_IntervalSlice2(t *testing.T) {
+	tests := []struct {
+		name           string
+		before         IntervalSlice
+		afterSort      IntervalSlice
+		afterNormalize IntervalSlice
+	}{
+		{
+			name:           "test sort and normalize",
+			before:         IntervalSlice{Interval{1, 2}, Interval{2, 4}, Interval{2, 3}},
+			afterSort:      IntervalSlice{Interval{1, 2}, Interval{2, 3}, Interval{2, 4}},
+			afterNormalize: IntervalSlice{Interval{1, 4}},
+		},
+		{
+			name:           "test sort and normalize",
+			before:         IntervalSlice{Interval{1, 2}, Interval{3, 5}, Interval{1, 3}},
+			afterSort:      IntervalSlice{Interval{1, 2}, Interval{1, 3}, Interval{3, 5}},
+			afterNormalize: IntervalSlice{Interval{1, 5}},
+		},
+		{
+			name:           "test sort and normalize",
+			before:         IntervalSlice{Interval{1, 2}, Interval{4, 5}, Interval{1, 3}},
+			afterSort:      IntervalSlice{Interval{1, 2}, Interval{1, 3}, Interval{4, 5}},
+			afterNormalize: IntervalSlice{Interval{1, 3}, Interval{4, 5}},
+		},
+		{
+			name:           "test sort and normalize",
+			before:         IntervalSlice{Interval{1, 4}, Interval{2, 3}},
+			afterSort:      IntervalSlice{Interval{1, 4}, Interval{2, 3}},
+			afterNormalize: IntervalSlice{Interval{1, 4}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.before.Sort()
+			assert.Equal(t, tt.before, tt.afterSort)
+			got := tt.before.Normalize()
+			assert.Equal(t, got, tt.afterNormalize)
+		})
+	}
+}
+
+func Test_InsertInterval(t *testing.T) {
+	tests := []struct {
+		name   string
+		before IntervalSlice
+		insert Interval
+		after  IntervalSlice
+	}{
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{100, 200}},
+			insert: Interval{300, 400},
+			after:  IntervalSlice{Interval{100, 200}, Interval{300, 400}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{100, 200}, Interval{300, 400}},
+			insert: Interval{50, 70},
+			after:  IntervalSlice{Interval{50, 70}, Interval{100, 200}, Interval{300, 400}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{50, 70}, Interval{100, 200}, Interval{300, 400}},
+			insert: Interval{101, 201},
+			after:  IntervalSlice{Interval{50, 70}, Interval{100, 201}, Interval{300, 400}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{50, 70}, Interval{100, 201}, Interval{300, 400}},
+			insert: Interval{99, 202},
+			after:  IntervalSlice{Interval{50, 70}, Interval{99, 202}, Interval{300, 400}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{50, 70}, Interval{99, 202}, Interval{300, 400}},
+			insert: Interval{102, 302},
+			after:  IntervalSlice{Interval{50, 70}, Interval{99, 400}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{50, 70}, Interval{99, 400}},
+			insert: Interval{500, 600},
+			after:  IntervalSlice{Interval{50, 70}, Interval{99, 400}, Interval{500, 600}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{50, 70}, Interval{99, 400}, Interval{500, 600}},
+			insert: Interval{50, 100},
+			after:  IntervalSlice{Interval{50, 400}, Interval{500, 600}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{50, 400}, Interval{500, 600}},
+			insert: Interval{900, 1000},
+			after:  IntervalSlice{Interval{50, 400}, Interval{500, 600}, Interval{900, 1000}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{50, 400}, Interval{500, 600}, Interval{900, 1000}},
+			insert: Interval{1010, 1020},
+			after:  IntervalSlice{Interval{50, 400}, Interval{500, 600}, Interval{900, 1000}, Interval{1010, 1020}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{50, 400}, Interval{500, 600}, Interval{900, 1000}, Interval{1010, 1020}},
+			insert: Interval{49, 1000},
+			after:  IntervalSlice{Interval{49, 1000}, Interval{1010, 1020}},
+		},
+		{
+			name:   "test insert interval",
+			before: IntervalSlice{Interval{49, 1000}, Interval{1010, 1020}},
+			insert: Interval{1, 1012},
+			after:  IntervalSlice{Interval{1, 1020}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.before.InsertInterval(tt.insert)
+			assert.Equal(t, tt.before, tt.after)
+		})
+	}
+}

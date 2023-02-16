@@ -78,26 +78,112 @@ func (s IntervalSlice) Sort() {
 	sort.Sort(s)
 }
 
-func (s IntervalSlice) Normalize() (o IntervalSlice) {
+func (s IntervalSlice) Normalize() IntervalSlice {
+	var n IntervalSlice
 	if len(s) == 0 {
-		return
+		return n
 	}
 
 	s.Sort()
 
-	o = append(o, s[0])
+	n = append(n, s[0])
+
 	for i := 1; i < len(s); i++ {
-		last := o[len(o)-1]
+		last := n[len(n)-1]
 		if s[i].Start > last.Stop {
-			o = append(o, s[i])
+			n = append(n, s[i])
 			continue
 		}
+
 		stop := s[i].Stop
 		if last.Stop > stop {
 			stop = last.Stop
 		}
-		o[len(o)-1] = Interval{Start: last.Start, Stop: stop}
+		n[len(n)-1] = Interval{last.Start, stop}
 	}
 
-	return o
+	return n
+}
+
+func (s IntervalSlice) Contain(sub IntervalSlice) bool {
+	j := 0
+	for i := 0; i < len(s); i++ {
+		for ; j < len(s); j++ {
+			if sub[j].Start > s[i].Stop {
+				continue
+			}
+			break
+		}
+		if j == len(s) {
+			return false
+		}
+		if sub[j].Start < s[i].Start || sub[j].Stop > s[i].Stop {
+			return false
+		}
+	}
+	return true
+}
+
+func (s IntervalSlice) Equal(o IntervalSlice) bool {
+	if len(s) != len(o) {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i].Start != o[i].Start || s[i].Stop != o[i].Stop {
+			return false
+		}
+	}
+	return true
+}
+
+func (s IntervalSlice) Compare(o IntervalSlice) int {
+	if s.Equal(o) {
+		return 0
+	}
+	if s.Contain(o) {
+		return 1
+	}
+	return -1
+}
+
+func min(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func (s *IntervalSlice) InsertInterval(interval Interval) {
+	var (
+		count int
+		i     int
+	)
+
+	*s = append(*s, interval)
+	total := len(*s)
+	for i = total - 1; i > 0; i-- {
+		if (*s)[i].Stop < (*s)[i-1].Start {
+			(*s)[i], (*s)[i-1] = (*s)[i-1], (*s)[i]
+		} else if (*s)[i].Start > (*s)[i-1].Stop {
+			break
+		} else {
+			(*s)[i-1].Start = min((*s)[i-1].Start, (*s)[i].Start)
+			(*s)[i-1].Stop = max((*s)[i-1].Stop, (*s)[i].Stop)
+			count++
+		}
+	}
+	if count > 0 {
+		i++
+		if i+count < total {
+			copy((*s)[i:], (*s)[i+count:])
+		}
+		*s = (*s)[:total-count]
+	}
 }
