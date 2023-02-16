@@ -69,3 +69,37 @@ func Test_parseInterval(t *testing.T) {
 		})
 	}
 }
+
+func Test_IntervalSlice(t *testing.T) {
+	tests := []struct {
+		name   string
+		before IntervalSlice
+		after  IntervalSlice
+	}{
+		{
+			name: "before is empty then ok",
+		},
+		{
+			name:   "no overlap",
+			before: IntervalSlice{Interval{1, 3}, Interval{5, 7}},
+			after:  IntervalSlice{Interval{1, 3}, Interval{5, 7}},
+		},
+		{
+			name:   "has overlap",
+			before: IntervalSlice{Interval{1, 5}, Interval{3, 7}},
+			after:  IntervalSlice{Interval{1, 7}},
+		},
+		{
+			name:   "has overlap",
+			before: IntervalSlice{Interval{3, 7}, Interval{1, 5}},
+			after:  IntervalSlice{Interval{1, 7}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			o := tt.before.Normalize()
+			assert.Equal(t, tt.after, o)
+		})
+	}
+}
