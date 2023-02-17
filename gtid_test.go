@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -226,6 +227,117 @@ func Test_InsertInterval(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.before.InsertInterval(tt.insert)
 			assert.Equal(t, tt.before, tt.after)
+		})
+	}
+}
+
+func Test_UUIDSet_ParseUUIDSet(t *testing.T) {
+	tests := []struct {
+		name       string
+		uUIDSetStr string
+		want       *UUIDSet
+		errWant    error
+	}{
+		{
+			name:       "happy",
+			uUIDSetStr: "de278ad0-2106-11e4-9f8e-6edd0ca20947:1-2",
+			want: &UUIDSet{
+				SID:       uuid.MustParse("de278ad0-2106-11e4-9f8e-6edd0ca20947"),
+				Intervals: IntervalSlice{Interval{1, 3}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseUUIDSet(tt.uUIDSetStr)
+			assert.Equal(t, tt.errWant, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_UUIDSet_Encode(t *testing.T) {
+	tests := []struct {
+		name string
+		uset *UUIDSet
+		want []byte
+	}{
+		{
+			name: "happy",
+			uset: &UUIDSet{
+				SID:       uuid.MustParse("de278ad0-2106-11e4-9f8e-6edd0ca20947"),
+				Intervals: IntervalSlice{Interval{1, 3}},
+			},
+			want: []byte{
+				0xde, 0x27, 0x8a, 0xd0, 0x21, 0x6, 0x11, 0xe4, 0x9f, 0x8e, 0x6e, 0xdd, 0xc, 0xa2, 0x9, 0x47,
+				0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+				0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+				0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.uset.Encode()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_UUIDSet_Decode(t *testing.T) {
+	tests := []struct {
+		name string
+		uset *UUIDSet
+		b    []byte
+		err  error
+	}{
+		{
+			name: "happy",
+			uset: &UUIDSet{
+				SID:       uuid.MustParse("de278ad0-2106-11e4-9f8e-6edd0ca20947"),
+				Intervals: IntervalSlice{Interval{1, 3}},
+			},
+			b: []byte{
+				0xde, 0x27, 0x8a, 0xd0, 0x21, 0x6, 0x11, 0xe4, 0x9f, 0x8e, 0x6e, 0xdd, 0xc, 0xa2, 0x9, 0x47,
+				0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+				0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+				0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &UUIDSet{}
+			err := a.Decode(tt.b)
+			assert.Equal(t, tt.err, err)
+			assert.Equal(t, tt.uset, a)
+		})
+	}
+}
+
+func Test_UUIDSet_String(t *testing.T) {
+	tests := []struct {
+		name string
+		uset *UUIDSet
+		s    string
+	}{
+		{
+			name: "happy",
+			uset: &UUIDSet{
+				SID:       uuid.MustParse("de278ad0-2106-11e4-9f8e-6edd0ca20947"),
+				Intervals: IntervalSlice{Interval{1, 3}},
+			},
+			s: "de278ad0-2106-11e4-9f8e-6edd0ca20947:1-2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := tt.uset.String()
+			assert.Equal(t, tt.s, s)
 		})
 	}
 }
