@@ -210,3 +210,21 @@ func Uint64ToBytes(n uint64) []byte {
 		byte(n >> 56),
 	}
 }
+
+// FixedLengthInt: little endian
+func FixedLengthInt(buf []byte) uint64 {
+	var num uint64 = 0
+	for i, b := range buf {
+		num |= uint64(b) << (uint(i) * 8)
+	}
+	return num
+}
+
+// BFixedLengthInt: big endian
+func BFixedLengthInt(buf []byte) uint64 {
+	var num uint64 = 0
+	for i, b := range buf {
+		num |= uint64(b) << (uint(len(buf)-i-1) * 8)
+	}
+	return num
+}

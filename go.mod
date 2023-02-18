@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/google/uuid v1.3.0
 	github.com/pingcap/errors v0.11.4
+	github.com/shopspring/decimal v1.3.1
 	github.com/stretchr/testify v1.8.1
 )
 
