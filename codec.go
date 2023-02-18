@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
+	"io"
 )
 
 func LengthEncodedInt(b []byte) (num uint64, isNull bool, n int) {
@@ -144,4 +145,39 @@ func EncryptPassword(password string, seed []byte, pub *rsa.PublicKey) ([]byte, 
 	}
 	sha1v := sha1.New()
 	return rsa.EncryptOAEP(sha1v, rand.Reader, pub, plain, nil)
+}
+
+func SkipLengthEncodedString(b []byte) (int, error) {
+	// Get length
+	num, _, n := LengthEncodedInt(b)
+	if num < 1 {
+		return n, nil
+	}
+
+	n += int(num)
+
+	// Check data length
+	if len(b) >= n {
+		return n, nil
+	}
+	return n, io.EOF
+}
+
+// LengthEncodedString returns the string read as a bytes slice, whether the value is NULL,
+// the number of bytes read and an error, in case the string is longer than
+// the input slice
+func LengthEncodedString(b []byte) ([]byte, bool, int, error) {
+	// Get length
+	num, isNull, n := LengthEncodedInt(b)
+	if num < 1 {
+		return b[n:n], isNull, n, nil
+	}
+
+	n += int(num)
+
+	// Check data length
+	if len(b) >= n {
+		return b[n-int(num) : n : n], false, n, nil
+	}
+	return nil, false, n, io.EOF
 }

@@ -700,3 +700,185 @@ func (c *Conn) WriteEncryptedPassword(password string, seed []byte, pub *rsa.Pub
 	}
 	return errors.Wrap(c.WriteAuthSwitchPacket(enc, false), "WriteAuthSwitchPacket failed")
 }
+
+func (c *Conn) Execute(command string, args ...interface{}) (*Result, error) {
+	if len(args) == 0 {
+		return c.exec(command)
+	}
+
+	return nil, fmt.Errorf("not supported with args")
+	// s, err := c.Prepare(command)
+	// if err != nil {
+	// 	return nil, errors.Trace(err)
+	// }
+
+	// var r *Result
+	// r, err = s.Execute(args...)
+	// s.Close()
+	// return r, err
+}
+
+func (c *Conn) exec(query string) (*Result, error) {
+	if err := c.writeCommandStr(COM_QUERY, query); err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	return c.readResult(false)
+}
+
+func (c *Conn) writeCommandStr(command byte, arg string) error {
+	return c.writeCommandBuf(command, StringToBytes(arg))
+}
+
+func (c *Conn) writeCommandBuf(command byte, arg []byte) error {
+	c.ResetSequence()
+
+	length := len(arg) + 1
+	data := GetByteSlice(length + 4)
+	data.B[4] = command
+
+	copy(data.B[5:], arg)
+
+	err := c.WritePacket(data.B)
+
+	PutByteSlice(data)
+
+	return err
+}
+
+func (c *Conn) readResult(binary bool) (*Result, error) {
+	bs := GetByteSlice(16)
+	defer PutByteSlice(bs)
+	var err error
+	bs.B, err = c.ReadPacketReuseMem(bs.B[:0])
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	switch bs.B[0] {
+	case OK_HEADER:
+		return c.handleOKPacket(bs.B)
+	case ERR_HEADER:
+		return nil, c.handleErrorPacket(bytes.Repeat(bs.B, 1))
+	case LocalInFile_HEADER:
+		return nil, ErrMalformPacket
+	default:
+		return c.readResultset(bs.B, binary)
+	}
+}
+
+func (c *Conn) readResultset(data []byte, binary bool) (*Result, error) {
+	// column count
+	count, _, n := LengthEncodedInt(data)
+
+	if n-len(data) != 0 {
+		return nil, ErrMalformPacket
+	}
+
+	result := &Result{
+		Resultset: NewResultset(int(count)),
+	}
+
+	if err := c.readResultColumns(result); err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	if err := c.readResultRows(result, binary); err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	return result, nil
+}
+
+func (c *Conn) readResultColumns(result *Result) (err error) {
+	var i = 0
+	var data []byte
+
+	for {
+		rawPkgLen := len(result.RawPkg)
+		result.RawPkg, err = c.ReadPacketReuseMem(result.RawPkg)
+		if err != nil {
+			return
+		}
+		data = result.RawPkg[rawPkgLen:]
+
+		// EOF Packet
+		if c.isEOFPacket(data) {
+			if c.capability&CLIENT_PROTOCOL_41 > 0 {
+				result.Warnings = binary.LittleEndian.Uint16(data[1:])
+				//todo add strict_mode, warning will be treat as error
+				result.Status = binary.LittleEndian.Uint16(data[3:])
+				c.status = result.Status
+			}
+
+			if i != len(result.Fields) {
+				err = ErrMalformPacket
+			}
+
+			return
+		}
+
+		if result.Fields[i] == nil {
+			result.Fields[i] = &Field{}
+		}
+		err = result.Fields[i].Parse(data)
+		if err != nil {
+			return
+		}
+
+		result.FieldNames[BytesToString(result.Fields[i].Name)] = i
+
+		i++
+	}
+}
+
+func (c *Conn) readResultRows(result *Result, isBinary bool) (err error) {
+	var data []byte
+
+	for {
+		rawPkgLen := len(result.RawPkg)
+		result.RawPkg, err = c.ReadPacketReuseMem(result.RawPkg)
+		if err != nil {
+			return
+		}
+		data = result.RawPkg[rawPkgLen:]
+
+		// EOF Packet
+		if c.isEOFPacket(data) {
+			if c.capability&CLIENT_PROTOCOL_41 > 0 {
+				result.Warnings = binary.LittleEndian.Uint16(data[1:])
+				//todo add strict_mode, warning will be treat as error
+				result.Status = binary.LittleEndian.Uint16(data[3:])
+				c.status = result.Status
+			}
+
+			break
+		}
+
+		if data[0] == ERR_HEADER {
+			return c.handleErrorPacket(data)
+		}
+
+		result.RowDatas = append(result.RowDatas, data)
+	}
+
+	if cap(result.Values) < len(result.RowDatas) {
+		result.Values = make([][]FieldValue, len(result.RowDatas))
+	} else {
+		result.Values = result.Values[:len(result.RowDatas)]
+	}
+
+	for i := range result.Values {
+		result.Values[i], err = result.RowDatas[i].Parse(result.Fields, isBinary, result.Values[i])
+
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Conn) isEOFPacket(data []byte) bool {
+	return data[0] == EOF_HEADER && len(data) <= 5
+}
