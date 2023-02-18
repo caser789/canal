@@ -341,3 +341,37 @@ func Test_UUIDSet_String(t *testing.T) {
 		})
 	}
 }
+
+func Test_ParseMySQLGTIDSet(t *testing.T) {
+	tests := []struct {
+		name    string
+		str     string
+		want    GTIDSet
+		errWant error
+	}{
+		{
+			name: "happy",
+			str:  "de278ad0-2106-11e4-9f8e-6edd0ca20947:1-2,de278ad0-2106-11e4-9f8e-6edd0ca20948:1-2",
+			want: &MySQLGTIDSet{
+				Sets: map[string]*UUIDSet{
+					"de278ad0-2106-11e4-9f8e-6edd0ca20947": {
+						SID:       uuid.MustParse("de278ad0-2106-11e4-9f8e-6edd0ca20947"),
+						Intervals: IntervalSlice{Interval{1, 3}},
+					},
+					"de278ad0-2106-11e4-9f8e-6edd0ca20948": {
+						SID:       uuid.MustParse("de278ad0-2106-11e4-9f8e-6edd0ca20948"),
+						Intervals: IntervalSlice{Interval{1, 3}},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseMySQLGTIDSet(tt.str)
+			assert.Equal(t, tt.errWant, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

@@ -10,19 +10,21 @@ type syncer struct {
 	password string
 }
 
-func (s *syncer) Dump() {
-}
-
 func main() {
 	fmt.Println("start main")
-	host := "127.0.0.1:3306"
-	user := "root"
-	password := "test"
-	d := syncer{
-		host:     host,
-		user:     user,
-		password: password,
+	fmt.Println("ping")
+
+	c, err := Connect("127.0.0.1:3306", "root", "test", "testdb")
+	if err != nil {
+		fmt.Printf("Connect error %s\n", err)
+		return
 	}
-	d.Dump()
+
+	err = c.Ping()
+	if err != nil {
+		fmt.Printf("Ping error %s\n", err)
+		return
+	}
+
 	fmt.Println("end main")
 }
