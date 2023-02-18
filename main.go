@@ -4,13 +4,7 @@ import (
 	"fmt"
 )
 
-type syncer struct {
-	host     string
-	user     string
-	password string
-}
-
-func main() {
+func test_conn() {
 	fmt.Println("start main")
 	fmt.Println("ping")
 
@@ -93,4 +87,8 @@ func main() {
 
 	fmt.Println("end main")
 
+}
+
+func main() {
+	fmt.Println("main")
 }
