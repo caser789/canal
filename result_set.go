@@ -7,6 +7,19 @@ import (
 	"sync"
 )
 
+type StreamingType int
+
+const (
+	// StreamingNone means there is no streaming
+	StreamingNone StreamingType = iota
+	// StreamingSelect is used with select queries for which each result is
+	// directly returned to the client
+	StreamingSelect
+	// StreamingMultiple is used when multiple queries are given at once
+	// usually in combination with SERVER_MORE_RESULTS_EXISTS flag set
+	StreamingMultiple
+)
+
 type Resultset struct {
 	RawPkg []byte
 
@@ -15,6 +28,9 @@ type Resultset struct {
 
 	RowDatas []RowData
 	Values   [][]FieldValue
+
+	Streaming     StreamingType
+	StreamingDone bool
 }
 
 var (

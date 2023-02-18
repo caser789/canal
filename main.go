@@ -73,6 +73,24 @@ func main() {
 	fmt.Println(r.Fields)
 	fmt.Println(r.Values)
 
+	str = fmt.Sprintf(`insert into mixer_test_conn (id, str) values(5, "%s")`, "abc")
+	r, err = c.Execute(str)
+	str = `select str from mixer_test_conn where id = ?`
+	r, err = c.Execute(str, 5)
+	fmt.Println("select with args")
+	fmt.Println(err)
+	fmt.Println(r.GetString(0, 0))
+
+	str = `insert into mixer_test_conn (id, i) values (?, ?)`
+	stmt, err := c.Prepare(str)
+	fmt.Println("prepare")
+	fmt.Println(err)
+	fmt.Println(stmt)
+	defer stmt.Close()
+
+	_, err = stmt.Execute(4, 127)
+	_, err = stmt.Execute(uint64(18446744073709551516), int8(-128))
+
 	fmt.Println("end main")
 
 }

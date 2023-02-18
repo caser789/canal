@@ -706,16 +706,15 @@ func (c *Conn) Execute(command string, args ...interface{}) (*Result, error) {
 		return c.exec(command)
 	}
 
-	return nil, fmt.Errorf("not supported with args")
-	// s, err := c.Prepare(command)
-	// if err != nil {
-	// 	return nil, errors.Trace(err)
-	// }
+	s, err := c.Prepare(command)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
 
-	// var r *Result
-	// r, err = s.Execute(args...)
-	// s.Close()
-	// return r, err
+	var r *Result
+	r, err = s.Execute(args...)
+	s.Close()
+	return r, err
 }
 
 func (c *Conn) exec(query string) (*Result, error) {
@@ -881,4 +880,227 @@ func (c *Conn) readResultRows(result *Result, isBinary bool) (err error) {
 
 func (c *Conn) isEOFPacket(data []byte) bool {
 	return data[0] == EOF_HEADER && len(data) <= 5
+}
+
+func (c *Conn) Prepare(query string) (*Stmt, error) {
+	if err := c.writeCommandStr(COM_STMT_PREPARE, query); err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	data, err := c.ReadPacket()
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	if data[0] == ERR_HEADER {
+		return nil, c.handleErrorPacket(data)
+	}
+	if data[0] != OK_HEADER {
+		return nil, ErrMalformPacket
+	}
+
+	s := new(Stmt)
+	s.conn = c
+
+	pos := 1
+
+	//for statement id
+	s.id = binary.LittleEndian.Uint32(data[pos:])
+	pos += 4
+
+	//number columns
+	s.columns = int(binary.LittleEndian.Uint16(data[pos:]))
+	pos += 2
+
+	//number params
+	s.params = int(binary.LittleEndian.Uint16(data[pos:]))
+	pos += 2
+
+	//warnings
+	s.warnings = int(binary.LittleEndian.Uint16(data[pos:]))
+	// pos += 2
+
+	if s.params > 0 {
+		if err := s.conn.readUntilEOF(); err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
+
+	if s.columns > 0 {
+		if err := s.conn.readUntilEOF(); err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
+
+	return s, nil
+}
+
+func (c *Conn) readUntilEOF() (err error) {
+	var data []byte
+
+	for {
+		data, err = c.ReadPacket()
+
+		if err != nil {
+			return
+		}
+
+		// EOF Packet
+		if c.isEOFPacket(data) {
+			return
+		}
+	}
+}
+
+func (c *Conn) writeCommandUint32(command byte, arg uint32) error {
+	c.ResetSequence()
+
+	return c.WritePacket([]byte{
+		0x05, //5 bytes long
+		0x00,
+		0x00,
+		0x00, //sequence
+
+		command,
+
+		byte(arg),
+		byte(arg >> 8),
+		byte(arg >> 16),
+		byte(arg >> 24),
+	})
+}
+
+func (c *Conn) readResultStreaming(binary bool, result *Result, perRowCb SelectPerRowCallback, perResCb SelectPerResultCallback) error {
+	bs := GetByteSlice(16)
+	defer PutByteSlice(bs)
+	var err error
+	bs.B, err = c.ReadPacketReuseMem(bs.B[:0])
+	if err != nil {
+		return errors.Trace(err)
+	}
+
+	switch bs.B[0] {
+	case OK_HEADER:
+		// https://dev.mysql.com/doc/internals/en/com-query-response.html
+		// 14.6.4.1 COM_QUERY Response
+		// If the number of columns in the resultset is 0, this is a OK_Packet.
+
+		okResult, err := c.handleOKPacket(bs.B)
+		if err != nil {
+			return errors.Trace(err)
+		}
+
+		result.Status = okResult.Status
+		result.AffectedRows = okResult.AffectedRows
+		result.InsertId = okResult.InsertId
+		result.Warnings = okResult.Warnings
+		if result.Resultset == nil {
+			result.Resultset = NewResultset(0)
+		} else {
+			result.Reset(0)
+		}
+		return nil
+	case ERR_HEADER:
+		return c.handleErrorPacket(bytes.Repeat(bs.B, 1))
+	case LocalInFile_HEADER:
+		return ErrMalformPacket
+	default:
+		return c.readResultsetStreaming(bs.B, binary, result, perRowCb, perResCb)
+	}
+}
+
+func (c *Conn) readResultsetStreaming(data []byte, binary bool, result *Result, perRowCb SelectPerRowCallback, perResCb SelectPerResultCallback) error {
+	columnCount, _, n := LengthEncodedInt(data)
+
+	if n-len(data) != 0 {
+		return ErrMalformPacket
+	}
+
+	if result.Resultset == nil {
+		result.Resultset = NewResultset(int(columnCount))
+	} else {
+		// Reuse memory if can
+		result.Reset(int(columnCount))
+	}
+
+	// this is a streaming resultset
+	result.Resultset.Streaming = StreamingSelect
+
+	if err := c.readResultColumns(result); err != nil {
+		return errors.Trace(err)
+	}
+
+	if perResCb != nil {
+		if err := perResCb(result); err != nil {
+			return err
+		}
+	}
+
+	if err := c.readResultRowsStreaming(result, binary, perRowCb); err != nil {
+		return errors.Trace(err)
+	}
+
+	// this resultset is done streaming
+	result.Resultset.StreamingDone = true
+
+	return nil
+}
+
+func (c *Conn) readResultRowsStreaming(result *Result, isBinary bool, perRowCb SelectPerRowCallback) (err error) {
+	var (
+		data []byte
+		row  []FieldValue
+	)
+
+	for {
+		data, err = c.ReadPacketReuseMem(data[:0])
+		if err != nil {
+			return
+		}
+
+		// EOF Packet
+		if c.isEOFPacket(data) {
+			if c.capability&CLIENT_PROTOCOL_41 > 0 {
+				result.Warnings = binary.LittleEndian.Uint16(data[1:])
+				// todo add strict_mode, warning will be treat as error
+				result.Status = binary.LittleEndian.Uint16(data[3:])
+				c.status = result.Status
+			}
+
+			break
+		}
+
+		if data[0] == ERR_HEADER {
+			return c.handleErrorPacket(data)
+		}
+
+		// Parse this row
+		row, err = RowData(data).Parse(result.Fields, isBinary, row)
+		if err != nil {
+			return errors.Trace(err)
+		}
+
+		// Send the row to "userland" code
+		err = perRowCb(row)
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Conn) Begin() error {
+	_, err := c.exec("BEGIN")
+	return errors.Trace(err)
+}
+
+func (c *Conn) Commit() error {
+	_, err := c.exec("COMMIT")
+	return errors.Trace(err)
+}
+
+func (c *Conn) Rollback() error {
+	_, err := c.exec("ROLLBACK")
+	return errors.Trace(err)
 }
