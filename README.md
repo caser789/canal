@@ -49,3 +49,6 @@ mycli -h localhost --protocol=TCP -P 3306 -u root test_db
 +-----------+------+------+-----------+------------+
 +-----------+------+------+-----------+------------+
 ```
+### RESET MASTER
+
+For a server where binary logging is enabled (log_bin is ON), RESET MASTER deletes all existing binary log files and resets the binary log index file, resetting the server to its state before binary logging was started. A new empty binary log file is created so that binary logging can be restarted.
