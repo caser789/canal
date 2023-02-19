@@ -1104,3 +1104,35 @@ func (c *Conn) Rollback() error {
 	_, err := c.exec("ROLLBACK")
 	return errors.Trace(err)
 }
+
+func (c *Conn) HandleErrorPacket(data []byte) error {
+	return c.handleErrorPacket(data)
+}
+
+func (c *Conn) ReadOKPacket() (*Result, error) {
+	return c.readOK()
+}
+
+func (c *Conn) SetCharset(charset string) error {
+	if c.charset == charset {
+		return nil
+	}
+
+	_, err := c.exec(fmt.Sprintf("SET NAMES %s", charset))
+	if err != nil {
+		return errors.Trace(err)
+	}
+
+	c.charset = charset
+	return nil
+}
+
+func (c *Conn) GetConnectionID() uint32 {
+	return c.connectionID
+}
+
+// SetTLSConfig: use user-specified TLS config
+// pass to options when connect
+func (c *Conn) SetTLSConfig(config *tls.Config) {
+	c.tlsConfig = config
+}

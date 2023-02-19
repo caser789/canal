@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -146,4 +147,10 @@ func init() {
 	for i := 1; i <= 6; i++ {
 		fracTimeFormat[i] = fmt.Sprintf("2006-01-02 15:04:05.%s", strings.Repeat("0", i))
 	}
+}
+
+func Pstack() string {
+	buf := make([]byte, 1024)
+	n := runtime.Stack(buf, false)
+	return string(buf[0:n])
 }
