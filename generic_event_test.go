@@ -17,7 +17,7 @@ func Test_GenericEvent_Dump(t *testing.T) {
 			event: &GenericEvent{
 				Data: []byte{'a', 'b', 'c'},
 			},
-			s: `Event data: 
+			s: `Event data:
 00000000  61 62 63                                          |abc|
 
 `,

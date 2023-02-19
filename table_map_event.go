@@ -17,14 +17,15 @@ type TableMapEvent struct {
 
 	Flags uint16
 
-	Schema []byte
-	Table  []byte
+	Schema []byte // database name
+	Table  []byte // table name
 
-	ColumnCount uint64
-	ColumnType  []byte
-	ColumnMeta  []uint16
+	ColumnCount uint64   // number of columns
+	ColumnType  []byte   // type of each column, one byte for one column
+	ColumnMeta  []uint16 // one byte for each column
 
 	//len = (ColumnCount + 7) / 8
+	// Bit-field indicating whether each column can be NULL, one bit per column.
 	NullBitmap []byte
 
 	/*
@@ -80,31 +81,31 @@ func (e *TableMapEvent) Decode(data []byte) error {
 	pos += e.tableIDSize
 
 	e.Flags = binary.LittleEndian.Uint16(data[pos:])
-	pos += 2
+	pos += 2 // not used
 
 	schemaLength := data[pos]
-	pos++
+	pos++ // database length
 
 	e.Schema = data[pos : pos+int(schemaLength)]
-	pos += int(schemaLength)
+	pos += int(schemaLength) // database name
 
-	//skip 0x00
+	//skip 0x00 database name end will 0x00
 	pos++
 
 	tableLength := data[pos]
-	pos++
+	pos++ // table name length
 
 	e.Table = data[pos : pos+int(tableLength)]
-	pos += int(tableLength)
+	pos += int(tableLength) // table name
 
-	//skip 0x00
+	//skip 0x00 table name ends with 0xxx
 	pos++
 
 	var n int
-	e.ColumnCount, _, n = LengthEncodedInt(data[pos:])
+	e.ColumnCount, _, n = LengthEncodedInt(data[pos:]) // number of columns in the table
 	pos += n
 
-	e.ColumnType = data[pos : pos+int(e.ColumnCount)]
+	e.ColumnType = data[pos : pos+int(e.ColumnCount)] // one byte for one column type
 	pos += int(e.ColumnCount)
 
 	var err error

@@ -12,7 +12,7 @@ type GenericEvent struct {
 }
 
 func (e *GenericEvent) Dump(w io.Writer) {
-	fmt.Fprintf(w, "Event data: \n%s", hex.Dump(e.Data))
+	fmt.Fprintf(w, "Event data:\n%s", hex.Dump(e.Data))
 	fmt.Fprintln(w)
 }
 
