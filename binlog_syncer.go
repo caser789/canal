@@ -26,6 +26,32 @@ const (
 	MariaDBFlavor = "mariadb"
 )
 
+func NewBinlogSyncer(cfg BinlogSyncerConfig) *BinlogSyncer {
+	if cfg.ServerID == 0 {
+		fmt.Println("can't use 0 as the server ID")
+		return nil
+	}
+
+	if cfg.Dialer == nil {
+		dialer := &net.Dialer{}
+		cfg.Dialer = dialer.DialContext
+	}
+
+	b := new(BinlogSyncer)
+	b.cfg = cfg
+	b.parser = NewBinlogParser()
+	b.parser.SetFlavor(cfg.Flavor)
+	b.parser.SetRawMode(b.cfg.RawModeEnabled)
+	b.parser.SetParseTime(b.cfg.ParseTime)
+	b.parser.SetTimestampStringLocation(b.cfg.TimestampStringLocation)
+	b.parser.SetUseDecimal(b.cfg.UseDecimal)
+	b.parser.SetVerifyChecksum(b.cfg.VerifyChecksum)
+	b.parser.SetRowsEventDecodeFunc(b.cfg.RowsEventDecodeFunc)
+	b.running = false
+	b.ctx, b.cancel = context.WithCancel(context.Background())
+	return b
+}
+
 // BinlogSyncer syncs binlog event from server.
 type BinlogSyncer struct {
 	parser *BinlogParser
@@ -37,9 +63,10 @@ type BinlogSyncer struct {
 	// instead of GTIDSet.Clone, use this to speed up calculate prevGset
 	prevMySQLGTIDEvent *GTIDEvent
 
-	m   sync.RWMutex
-	ctx context.Context
-	wg  sync.WaitGroup
+	m      sync.RWMutex
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	running          bool
 	retryCount       int
@@ -786,4 +813,42 @@ func (b *BinlogSyncer) writeBinlogDumpMysqlGTIDCommand(gset GTIDSet) error {
 	data = data[0:pos]
 
 	return b.c.WritePacket(data)
+}
+
+// StartSyncGTID starts syncing from the `gset` GTIDSet.
+func (b *BinlogSyncer) StartSyncGTID(gset GTIDSet) (*BinlogStreamer, error) {
+	fmt.Printf("begin to sync binlog from GTID set %s\n", gset)
+
+	b.prevMySQLGTIDEvent = nil
+	b.prevGset = gset
+
+	b.m.Lock()
+	defer b.m.Unlock()
+
+	if b.running {
+		return nil, errors.Trace(errSyncRunning)
+	}
+
+	// establishing network connection here and will start getting binlog events from "gset + 1", thus until first
+	// MariadbGTIDEvent/GTIDEvent event is received - we effectively do not have a "current GTID"
+	b.currGset = nil
+
+	if err := b.prepare(); err != nil {
+		return nil, errors.Trace(err)
+	}
+
+	var err error
+	switch b.cfg.Flavor {
+	case MariaDBFlavor:
+		err = b.writeBinlogDumpMariadbGTIDCommand(gset)
+	default:
+		// default use MySQL
+		err = b.writeBinlogDumpMysqlGTIDCommand(gset)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return b.startDumpStream(), nil
 }

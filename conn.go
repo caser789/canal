@@ -1136,3 +1136,7 @@ func (c *Conn) GetConnectionID() uint32 {
 func (c *Conn) SetTLSConfig(config *tls.Config) {
 	c.tlsConfig = config
 }
+
+func (c *Conn) GetServerVersion() string {
+	return c.serverVersion
+}
